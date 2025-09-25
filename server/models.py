@@ -1,5 +1,4 @@
-from flask_sqlalchemy import SQLAlchemy
-from app import db 
+from extensions import db
 
 # Association table for many-to-many User <-> Goal
 user_goals = db.Table(

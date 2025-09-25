@@ -1,12 +1,9 @@
 #!/usr/bin/env python3
 from flask import Flask, jsonify, request
-from flask_sqlalchemy import SQLAlchemy
-from flask_migrate import Migrate
 from flask_cors import CORS
 from config import Config
+from extensions import db, migrate 
 
-db = SQLAlchemy()
-migrate = Migrate()
 
 def create_app():
     app = Flask(__name__)
