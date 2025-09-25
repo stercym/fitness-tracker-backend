@@ -4,6 +4,7 @@ from flask_sqlalchemy import SQLAlchemy
 from flask_migrate import Migrate
 from flask_cors import CORS
 from config import Config
+from flask_jwt_extended import JWTManager, create_access_token, jwt_required, get_jwt_identity
 
 db = SQLAlchemy()
 migrate = Migrate()
@@ -14,6 +15,8 @@ def create_app():
 
     CORS(app)
     db.init_app(app)
+    jwt = JWTManager()
+    jwt.init_app(app)
     migrate.init_app(app, db)
 
     from models import User, Goal, Workout, Exercise, ExerciseLog
@@ -193,7 +196,64 @@ def create_app():
         db.session.commit()
         return jsonify({"message": "Exercise log deleted"}), 204
 
-    return app
+        # Authentication Endpoints
+    @app.route("/auth/register", methods=["POST"])
+    def auth_register():
+        """
+        Expects JSON: { name, email, password, goal_id (optional) }
+        Creates user with hashed password. Returns created user (no password).
+        """
+        data = request.get_json() or {}
+        name = data.get("name")
+        email = data.get("email")
+        password = data.get("password")
+        goal_id = data.get("goal_id")
+
+        if not name or not email or not password:
+            return jsonify({"error": "name, email and password are required"}), 400
+
+        if User.query.filter_by(email=email).first():
+            return jsonify({"error": "email already registered"}), 409
+
+        user = User(name=name, email=email)
+        user.set_password(password)
+
+        if goal_id:
+            goal = Goal.query.get(goal_id)
+            if goal:
+                user.goals.append(goal)
+
+
+    # Login authentication
+    @app.route("/auth/login", methods=["POST"])
+    def auth_login():
+        """
+        Expects JSON: { email, password }
+        Returns: { access_token, user }
+        """
+        data = request.get_json() or {}
+        email = data.get("email")
+        password = data.get("password")
+
+        if not email or not password:
+            return jsonify({"error": "email and password are required"}), 400
+
+        user = User.query.filter_by(email=email).first()
+        if not user or not user.check_password(password):
+            return jsonify({"error": "invalid credentials"}), 401
+
+        access_token = create_access_token(identity=user.id)
+        return jsonify({"access_token": access_token, "user": user.to_dict()}), 200
+
+
+    # shows current user info
+    @app.route("/users/me", methods=["GET"])
+    @jwt_required()
+    def users_me():
+        current_user_id = get_jwt_identity()
+        user = User.query.get_or_404(current_user_id)
+        return jsonify(user.to_dict()), 200
+        return app
 
 app = create_app()
 

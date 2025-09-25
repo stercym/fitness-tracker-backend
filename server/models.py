@@ -1,5 +1,6 @@
 from app import db
 from sqlalchemy_serializer import SerializerMixin
+from werkzeug.security import generate_password_hash, check_password_hash
 
 # Association table
 user_goals = db.Table(
@@ -14,13 +15,22 @@ class User(db.Model, SerializerMixin):
     id = db.Column(db.Integer, primary_key=True)
     name = db.Column(db.String(50), nullable=False)
     email = db.Column(db.String(100), unique=True, nullable=False)
+    password_hash = db.Column(db.String(128), nullable=True)
 
     # Relationships
     workouts = db.relationship("Workout", backref="user", cascade="all, delete-orphan")
     goals = db.relationship("Goal", secondary=user_goals, back_populates="users")
 
     # Prevents recursion
-    serialize_rules = ("-workouts.user", "-goals.users")
+    serialize_rules = ("-workouts.user", "-goals.users", "-password_hash")
+
+    def set_password(self, password: str):
+        self.password_hash = generate_password_hash(password)
+
+    def check_password(self, password: str) -> bool:
+        if not self.password_hash:
+            return False
+        return check_password_hash(self.password_hash, password)
 
 
 class Goal(db.Model, SerializerMixin):
