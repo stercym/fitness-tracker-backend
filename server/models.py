@@ -1,11 +1,20 @@
 from app import db
 
 # Association table for many-to-many User <-> Goal
-user_goals = db.Table(
-    "user_goals",
-    db.Column("user_id", db.Integer, db.ForeignKey("users.id"), primary_key=True),
-    db.Column("goal_id", db.Integer, db.ForeignKey("goals.id"), primary_key=True)
-)
+class UserGoal(db.Model):
+    __tablename__ = "user_goals"
+
+    id = db.Column(db.Integer, primary_key=True)
+    user_id = db.Column(db.Integer, db.ForeignKey("users.id"))
+    goal_id = db.Column(db.Integer, db.ForeignKey("goals.id"))
+    target_date = db.Column(db.String(20), nullable=True)
+    # shows progress in percentage
+    progress = db.Column(db.Float, default=0.0) 
+
+    # Relationships
+    user = db.relationship("User", back_populates="user_goals")
+    goal = db.relationship("Goal", back_populates="user_goals")
+
 
 class User(db.Model):
     __tablename__ = "users"
@@ -16,7 +25,7 @@ class User(db.Model):
 
     # Relationships
     workouts = db.relationship("Workout", backref="user", cascade="all, delete-orphan")
-    goals = db.relationship("Goal", secondary=user_goals, back_populates="users")
+    user_goals = db.relationship("UserGoal", back_populates="user", cascade="all, delete-orphan")
 
 class Goal(db.Model):
     __tablename__ = "goals"
@@ -25,8 +34,8 @@ class Goal(db.Model):
     name = db.Column(db.String(50), nullable=False)
 
     # Relationships
-    users = db.relationship("User", secondary=user_goals, back_populates="goals")
     exercises = db.relationship("Exercise", backref="goal", cascade="all, delete-orphan")
+    user_goals = db.relationship("UserGoal", back_populates="goal", cascade="all, delete-orphan")
 
 class Workout(db.Model):
     __tablename__ = "workouts"
