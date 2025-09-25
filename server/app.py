@@ -26,7 +26,7 @@ def create_app():
     @app.route("/users", methods=["GET"])
     def get_users():
         users = User.query.all()
-        return jsonify([{"id": u.id, "name": u.name, "email": u.email} for u in users])
+        return jsonify([user.to_dict() for user in users]), 200
 
     @app.route("/users", methods=["POST"])
     def create_user():
@@ -34,7 +34,7 @@ def create_app():
         new_user = User(name=data["name"], email=data["email"])
         db.session.add(new_user)
         db.session.commit()
-        return jsonify({"message": "User created successfully"}), 201
+        return jsonify(new_user.to_dict()), 201
     
     @app.route("/users/<int:id>", methods=["PATCH"])
     def update_user(id):
@@ -56,7 +56,7 @@ def create_app():
     @app.route("/goals", methods=["GET"])
     def get_goals():
         goals = Goal.query.all()
-        return jsonify([{"id": g.id, "name": g.name} for g in goals])
+        return jsonify([goal.to_dict() for goal in goals]), 200
 
     @app.route("/goals", methods=["POST"])
     def create_goal():
@@ -64,7 +64,7 @@ def create_app():
         new_goal = Goal(name=data["name"])
         db.session.add(new_goal)
         db.session.commit()
-        return jsonify({"message": "Goal created successfully"}), 201
+        return jsonify(new_goal.to_dict()), 201
     
     @app.route("/goals/<int:id>", methods=["PATCH"])
     def update_goal(id):
@@ -95,7 +95,7 @@ def create_app():
         new_exercise = Exercise(name=data["name"], goal_id=data["goal_id"])
         db.session.add(new_exercise)
         db.session.commit()
-        return jsonify({"message": "Exercise created successfully"}), 201
+        return jsonify(new_exercise.to_dict()), 201
     
     @app.route("/exercises/<int:id>", methods=["PATCH"])
     def update_exercise(id):
@@ -127,7 +127,7 @@ def create_app():
         new_workout = Workout(date=data["date"], user_id=data["user_id"])
         db.session.add(new_workout)
         db.session.commit()
-        return jsonify({"message": "Workout created successfully"}), 201
+        return jsonify(new_workout.to_dict()), 201
     
     @app.route("/workouts/<int:id>", methods=["PATCH"])
     def update_workout(id):
@@ -172,7 +172,7 @@ def create_app():
         )
         db.session.add(new_log)
         db.session.commit()
-        return jsonify({"message": "Exercise log created successfully."}), 201
+        return jsonify(new_log.to_dict()), 201
     
     @app.route("/exercise_logs/<int:id>", methods=["PATCH"])
     def update_log(id):
