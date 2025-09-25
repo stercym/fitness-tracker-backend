@@ -6,7 +6,7 @@ from werkzeug.security import generate_password_hash, check_password_hash
 user_goals = db.Table(
     "user_goals",
     db.Column("user_id", db.Integer, db.ForeignKey("users.id"), primary_key=True),
-    db.Column("goal_id", db.Integer, db.ForeignKey("goals.id"), primary_key=True)
+    db.Column("goal_id", db.Integer, db.ForeignKey("goals.id"), primary_key=True),
 )
 
 class User(db.Model, SerializerMixin):
@@ -50,7 +50,9 @@ class Workout(db.Model, SerializerMixin):
     __tablename__ = "workouts"
 
     id = db.Column(db.Integer, primary_key=True)
-    date = db.Column(db.String(20), nullable=False)
+    title = db.Column(db.String(100), nullable=False)
+    date = db.Column(db.String(50), nullable=False)
+    notes = db.Column(db.Text, default="")
 
     user_id = db.Column(db.Integer, db.ForeignKey("users.id"))
     exercises = db.relationship("ExerciseLog", backref="workout", cascade="all, delete-orphan")
@@ -62,7 +64,8 @@ class Exercise(db.Model, SerializerMixin):
     __tablename__ = "exercises"
 
     id = db.Column(db.Integer, primary_key=True)
-    name = db.Column(db.String(50), nullable=False)
+    exercise_name = db.Column(db.String(50), nullable=False)
+
     goal_id = db.Column(db.Integer, db.ForeignKey("goals.id"))
 
     serialize_rules = ("-goal.exercises", "-exercise_logs.exercise")
