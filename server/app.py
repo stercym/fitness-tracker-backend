@@ -22,8 +22,36 @@ def create_app():
     def index():
         return jsonify({"message": "Fitness Tracker API is running!"})
 
+    #  PROGRESS ROUTE 
+    @app.route("/api/progress/<int:user_id>", methods=["GET"])
+    def get_progress(user_id):
+        user = User.query.get_or_404(user_id)
 
-    # Users
+        total_workouts = Workout.query.filter_by(user_id=user_id).count()
+
+        logs_by_goal = []
+        for goal in user.goals:
+            total_exercises = (
+                db.session.query(ExerciseLog)
+                .join(Exercise, Exercise.id == ExerciseLog.exercise_id)
+                .join(Workout, Workout.id == ExerciseLog.workout_id)
+                .filter(Workout.user_id == user_id, Exercise.goal_id == goal.id)
+                .count()
+            )
+            logs_by_goal.append({
+                "goal_id": goal.id,
+                "goal_name": goal.name,
+                "total_exercises": total_exercises,
+            })
+
+        return jsonify({
+            "user_id": user.id,
+            "username": user.username,
+            "total_workouts": total_workouts,
+            "logs_by_goal": logs_by_goal,
+        })
+
+    # USERS 
     @app.route("/api/users", methods=["GET"])
     def get_users():
         return jsonify([u.to_dict() for u in User.query.all()])
@@ -54,9 +82,8 @@ def create_app():
         db.session.delete(user)
         db.session.commit()
         return jsonify({"message": "User deleted"})
-
-
-    # Goals
+    
+    #  GOALS 
     @app.route("/api/goals", methods=["GET"])
     def get_goals():
         return jsonify([g.to_dict() for g in Goal.query.all()])
@@ -88,7 +115,7 @@ def create_app():
         db.session.commit()
         return jsonify({"message": "Goal deleted"})
 
-    # Workouts
+    #  WORKOUTS 
     @app.route("/api/workouts", methods=["GET"])
     def get_workouts():
         return jsonify([w.to_dict() for w in Workout.query.all()])
@@ -128,7 +155,7 @@ def create_app():
         return jsonify({"message": "Workout deleted"})
 
 
-    # Exercises
+    # EXERCISES 
     @app.route("/api/exercises", methods=["GET"])
     def get_exercises():
         return jsonify([e.to_dict() for e in Exercise.query.all()])
@@ -163,8 +190,9 @@ def create_app():
         db.session.delete(exercise)
         db.session.commit()
         return jsonify({"message": "Exercise deleted"})
+    
 
-    # Exercise Logs
+    #  EXERCISE LOGS
     @app.route("/api/exercise_logs", methods=["GET"])
     def get_exercise_logs():
         return jsonify([log.to_dict() for log in ExerciseLog.query.all()])
@@ -205,6 +233,7 @@ def create_app():
         db.session.delete(log)
         db.session.commit()
         return jsonify({"message": "ExerciseLog deleted"})
+    
 
     return app
 
@@ -213,4 +242,5 @@ app = create_app()
 
 if __name__ == "__main__":
     app.run(debug=True)
+
 
