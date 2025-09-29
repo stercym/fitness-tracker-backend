@@ -13,7 +13,7 @@ def create_app():
     app = Flask(__name__)
     app.config.from_object(Config)
 
-    CORS(app)
+    CORS(app, supports_credentials=True)
     db.init_app(app)
     jwt = JWTManager()
     jwt.init_app(app)
@@ -34,10 +34,36 @@ def create_app():
     @app.route("/users", methods=["POST"])
     def create_user():
         data = request.get_json()
-        new_user = User(name=data["name"], email=data["email"])
+
+        if not data:
+            return jsonify({"error": "No input data provided"}), 400
+
+        name = data.get("name")
+        email = data.get("email")
+        password = data.get("password")
+        goal_name = data.get("goal") 
+
+        if not name or not email or not password:
+            return jsonify({"error": "Missing required fields"}), 400
+
+        # Create user
+        new_user = User(name=name, email=email)
+        new_user.set_password(password)
+
+        # Attach goal if provided
+        if goal_name:
+            goal = Goal.query.filter_by(name=goal_name).first()
+            if goal:
+                new_user.goals.append(goal)
+
         db.session.add(new_user)
         db.session.commit()
-        return jsonify(new_user.to_dict()), 201
+
+        return jsonify({
+            "message": "User created successfully",
+            "user": new_user.to_dict()
+        }), 201
+
     
     @app.route("/users/<int:id>", methods=["PATCH"])
     def update_user(id):
@@ -89,13 +115,13 @@ def create_app():
     def get_exercises():
         exercises = Exercise.query.all()
         return jsonify([
-            {"id": e.id, "name": e.name, "goal_id": e.goal_id} for e in exercises
+            {"id": e.id, "name": e.exercise_name, "goal_id": e.goal_id} for e in exercises
         ])
 
     @app.route("/exercises", methods=["POST"])
     def create_exercise():
         data = request.get_json()
-        new_exercise = Exercise(name=data["name"], goal_id=data["goal_id"])
+        new_exercise = Exercise(exercise_name=data["exercise_name"], goal_id=data["goal_id"])
         db.session.add(new_exercise)
         db.session.commit()
         return jsonify(new_exercise.to_dict()), 201
@@ -104,7 +130,7 @@ def create_app():
     def update_exercise(id):
         exercise = Exercise.query.get_or_404(id)
         data = request.get_json()
-        exercise.name = data.get("name", exercise.name)
+        exercise.name = data.get("name", exercise.exercise_name)
         exercise.goal_id = data.get("goal_id", exercise.goal_id)
         db.session.commit()
         return jsonify(exercise.to_dict()), 200
@@ -121,13 +147,13 @@ def create_app():
     def get_workouts():
         workouts = Workout.query.all()
         return jsonify([
-            {"id": w.id, "date": w.date, "user_id": w.user_id} for w in workouts
+            {"id": w.id, "title": w.title, "date": w.date, "user_id": w.user_id} for w in workouts
         ])
 
     @app.route("/workouts", methods=["POST"])
     def create_workout():
         data = request.get_json()
-        new_workout = Workout(date=data["date"], user_id=data["user_id"])
+        new_workout = Workout(title=data["title"], date=data["date"], user_id=data["user_id"])
         db.session.add(new_workout)
         db.session.commit()
         return jsonify(new_workout.to_dict()), 201
@@ -136,6 +162,7 @@ def create_app():
     def update_workout(id):
         workout = Workout.query.get_or_404(id)
         data = request.get_json()
+        workout.title = data.get("title", workout.title)
         workout.date = data.get("date", workout.date)
         workout.user_id = data.get("user_id", workout.user_id)
         db.session.commit()
@@ -253,14 +280,10 @@ def create_app():
         current_user_id = get_jwt_identity()
         user = User.query.get_or_404(current_user_id)
         return jsonify(user.to_dict()), 200
-        return app
+    return app
 
 
 app = create_app()
-
-if __name__ == "__main__":
-    app.run(debug=True)
-
 
 
 if __name__ == "__main__":
