@@ -1,33 +1,39 @@
-from extensions import db
+from app import db
+from sqlalchemy_serializer import SerializerMixin
+from werkzeug.security import generate_password_hash, check_password_hash
 
-# Association table for many-to-many User <-> Goal
+# Association table
 user_goals = db.Table(
     "user_goals",
     db.Column("user_id", db.Integer, db.ForeignKey("users.id"), primary_key=True),
     db.Column("goal_id", db.Integer, db.ForeignKey("goals.id"), primary_key=True),
 )
 
-
-class User(db.Model):
+class User(db.Model, SerializerMixin):
     __tablename__ = "users"
 
     id = db.Column(db.Integer, primary_key=True)
-    username = db.Column(db.String(50), nullable=False, unique=True)
+    name = db.Column(db.String(50), nullable=False)
+    email = db.Column(db.String(100), unique=True, nullable=False)
+    password_hash = db.Column(db.String(128), nullable=True)
 
     # Relationships
     workouts = db.relationship("Workout", backref="user", cascade="all, delete-orphan")
     goals = db.relationship("Goal", secondary=user_goals, back_populates="users")
 
-    def to_dict(self):
-        return {
-            "id": self.id,
-            "username": self.username,
-            "goals": [goal.id for goal in self.goals],
-            "workouts": [workout.id for workout in self.workouts],
-        }
+    # Prevents recursion
+    serialize_rules = ("-workouts.user", "-goals.users", "-password_hash")
+
+    def set_password(self, password: str):
+        self.password_hash = generate_password_hash(password)
+
+    def check_password(self, password: str) -> bool:
+        if not self.password_hash:
+            return False
+        return check_password_hash(self.password_hash, password)
 
 
-class Goal(db.Model):
+class Goal(db.Model, SerializerMixin):
     __tablename__ = "goals"
 
     id = db.Column(db.Integer, primary_key=True)
@@ -37,16 +43,10 @@ class Goal(db.Model):
     users = db.relationship("User", secondary=user_goals, back_populates="goals")
     exercises = db.relationship("Exercise", backref="goal", cascade="all, delete-orphan")
 
-    def to_dict(self):
-        return {
-            "id": self.id,
-            "name": self.name,
-            "users": [user.id for user in self.users],
-            "exercises": [exercise.id for exercise in self.exercises],
-        }
+    serialize_rules = ("-users.goals", "-exercises.goal")
 
 
-class Workout(db.Model):
+class Workout(db.Model, SerializerMixin):
     __tablename__ = "workouts"
 
     id = db.Column(db.Integer, primary_key=True)
@@ -57,18 +57,10 @@ class Workout(db.Model):
     user_id = db.Column(db.Integer, db.ForeignKey("users.id"))
     exercises = db.relationship("ExerciseLog", backref="workout", cascade="all, delete-orphan")
 
-    def to_dict(self):
-        return {
-            "id": self.id,
-            "title": self.title,
-            "date": self.date,
-            "notes": self.notes,
-            "user_id": self.user_id,
-            "exercises": [log.id for log in self.exercises],
-        }
+    serialize_rules = ("-user.workouts", "-exercises.workout")
 
 
-class Exercise(db.Model):
+class Exercise(db.Model, SerializerMixin):
     __tablename__ = "exercises"
 
     id = db.Column(db.Integer, primary_key=True)
@@ -76,15 +68,10 @@ class Exercise(db.Model):
 
     goal_id = db.Column(db.Integer, db.ForeignKey("goals.id"))
 
-    def to_dict(self):
-        return {
-            "id": self.id,
-            "exercise_name": self.exercise_name,
-            "goal_id": self.goal_id,
-        }
+    serialize_rules = ("-goal.exercises", "-exercise_logs.exercise")
 
 
-class ExerciseLog(db.Model):
+class ExerciseLog(db.Model, SerializerMixin):
     __tablename__ = "exercise_logs"
 
     id = db.Column(db.Integer, primary_key=True)
@@ -95,13 +82,4 @@ class ExerciseLog(db.Model):
     workout_id = db.Column(db.Integer, db.ForeignKey("workouts.id"))
     exercise_id = db.Column(db.Integer, db.ForeignKey("exercises.id"))
 
-    def to_dict(self):
-        return {
-            "id": self.id,
-            "sets": self.sets,
-            "reps": self.reps,
-            "weight": self.weight,
-            "workout_id": self.workout_id,
-            "exercise_id": self.exercise_id,
-        }
-
+    serialize_rules = ("-workout.exercises", "-exercise.logs")

@@ -1,243 +1,290 @@
 #!/usr/bin/env python3
 from flask import Flask, jsonify, request
+from flask_sqlalchemy import SQLAlchemy
+from flask_migrate import Migrate
 from flask_cors import CORS
 from config import Config
-from extensions import db, migrate 
+from flask_jwt_extended import JWTManager, create_access_token, jwt_required, get_jwt_identity
 
+db = SQLAlchemy()
+migrate = Migrate()
 
 def create_app():
     app = Flask(__name__)
     app.config.from_object(Config)
 
-    CORS(app)
+    CORS(app, supports_credentials=True)
     db.init_app(app)
+    jwt = JWTManager()
+    jwt.init_app(app)
     migrate.init_app(app, db)
 
     from models import User, Goal, Workout, Exercise, ExerciseLog
-
-    @app.route("/")
+    # Home URL
+    @app.route('/')
     def index():
         return jsonify({"message": "Fitness Tracker API is running!"})
 
-    #  PROGRESS ROUTE 
-    @app.route("/api/progress/<int:user_id>", methods=["GET"])
-    def get_progress(user_id):
-        user = User.query.get_or_404(user_id)
+    # Users Endpoints
+    @app.route("/users", methods=["GET"])
+    def get_users():
+        users = User.query.all()
+        return jsonify([user.to_dict() for user in users]), 200
 
-        total_workouts = Workout.query.filter_by(user_id=user_id).count()
+    @app.route("/users", methods=["POST"])
+    def create_user():
+        data = request.get_json()
 
-        logs_by_goal = []
-        for goal in user.goals:
-            total_exercises = (
-                db.session.query(ExerciseLog)
-                .join(Exercise, Exercise.id == ExerciseLog.exercise_id)
-                .join(Workout, Workout.id == ExerciseLog.workout_id)
-                .filter(Workout.user_id == user_id, Exercise.goal_id == goal.id)
-                .count()
-            )
-            logs_by_goal.append({
-                "goal_id": goal.id,
-                "goal_name": goal.name,
-                "total_exercises": total_exercises,
-            })
+        if not data:
+            return jsonify({"error": "No input data provided"}), 400
+
+        name = data.get("name")
+        email = data.get("email")
+        password = data.get("password")
+        goal_name = data.get("goal") 
+
+        if not name or not email or not password:
+            return jsonify({"error": "Missing required fields"}), 400
+
+        # Create user
+        new_user = User(name=name, email=email)
+        new_user.set_password(password)
+
+        # Attach goal if provided
+        if goal_name:
+            goal = Goal.query.filter_by(name=goal_name).first()
+            if goal:
+                new_user.goals.append(goal)
+
+        db.session.add(new_user)
+        db.session.commit()
 
         return jsonify({
-            "user_id": user.id,
-            "username": user.username,
-            "total_workouts": total_workouts,
-            "logs_by_goal": logs_by_goal,
-        })
+            "message": "User created successfully",
+            "user": new_user.to_dict()
+        }), 201
 
-    # USERS 
-    @app.route("/api/users", methods=["GET"])
-    def get_users():
-        return jsonify([u.to_dict() for u in User.query.all()])
-
-    @app.route("/api/users/<int:id>", methods=["GET"])
-    def get_user(id):
-        return jsonify(User.query.get_or_404(id).to_dict())
-
-    @app.route("/api/users", methods=["POST"])
-    def create_user():
-        data = request.json
-        user = User(username=data["username"])
-        db.session.add(user)
-        db.session.commit()
-        return jsonify(user.to_dict()), 201
-
-    @app.route("/api/users/<int:id>", methods=["PUT"])
+    
+    @app.route("/users/<int:id>", methods=["PATCH"])
     def update_user(id):
         user = User.query.get_or_404(id)
-        data = request.json
-        user.username = data.get("username", user.username)
+        data = request.get_json()
+        user.name = data.get("name", user.name)
+        user.email = data.get("email", user.email)
         db.session.commit()
-        return jsonify(user.to_dict())
+        return jsonify(user.to_dict()), 200
 
-    @app.route("/api/users/<int:id>", methods=["DELETE"])
+    @app.route("/users/<int:id>", methods=["DELETE"])
     def delete_user(id):
         user = User.query.get_or_404(id)
         db.session.delete(user)
         db.session.commit()
-        return jsonify({"message": "User deleted"})
-    
-    #  GOALS 
-    @app.route("/api/goals", methods=["GET"])
+        return jsonify({"message": "User deleted"}), 204
+
+    # Goals Endpoints
+    @app.route("/goals", methods=["GET"])
     def get_goals():
-        return jsonify([g.to_dict() for g in Goal.query.all()])
+        goals = Goal.query.all()
+        return jsonify([goal.to_dict() for goal in goals]), 200
 
-    @app.route("/api/goals/<int:id>", methods=["GET"])
-    def get_goal(id):
-        return jsonify(Goal.query.get_or_404(id).to_dict())
-
-    @app.route("/api/goals", methods=["POST"])
+    @app.route("/goals", methods=["POST"])
     def create_goal():
-        data = request.json
-        goal = Goal(name=data["name"])
-        db.session.add(goal)
+        data = request.get_json()
+        new_goal = Goal(name=data["name"])
+        db.session.add(new_goal)
         db.session.commit()
-        return jsonify(goal.to_dict()), 201
-
-    @app.route("/api/goals/<int:id>", methods=["PUT"])
+        return jsonify(new_goal.to_dict()), 201
+    
+    @app.route("/goals/<int:id>", methods=["PATCH"])
     def update_goal(id):
         goal = Goal.query.get_or_404(id)
-        data = request.json
+        data = request.get_json()
         goal.name = data.get("name", goal.name)
         db.session.commit()
-        return jsonify(goal.to_dict())
+        return jsonify(goal.to_dict()), 200
 
-    @app.route("/api/goals/<int:id>", methods=["DELETE"])
+    @app.route("/goals/<int:id>", methods=["DELETE"])
     def delete_goal(id):
         goal = Goal.query.get_or_404(id)
         db.session.delete(goal)
         db.session.commit()
-        return jsonify({"message": "Goal deleted"})
-
-    #  WORKOUTS 
-    @app.route("/api/workouts", methods=["GET"])
-    def get_workouts():
-        return jsonify([w.to_dict() for w in Workout.query.all()])
-
-    @app.route("/api/workouts/<int:id>", methods=["GET"])
-    def get_workout(id):
-        return jsonify(Workout.query.get_or_404(id).to_dict())
-
-    @app.route("/api/workouts", methods=["POST"])
-    def create_workout():
-        data = request.json
-        workout = Workout(
-            title=data["title"],
-            date=data["date"],
-            notes=data.get("notes", ""),
-            user_id=data["user_id"]
-        )
-        db.session.add(workout)
-        db.session.commit()
-        return jsonify(workout.to_dict()), 201
-
-    @app.route("/api/workouts/<int:id>", methods=["PUT"])
-    def update_workout(id):
-        workout = Workout.query.get_or_404(id)
-        data = request.json
-        workout.title = data.get("title", workout.title)
-        workout.date = data.get("date", workout.date)
-        workout.notes = data.get("notes", workout.notes)
-        db.session.commit()
-        return jsonify(workout.to_dict())
-
-    @app.route("/api/workouts/<int:id>", methods=["DELETE"])
-    def delete_workout(id):
-        workout = Workout.query.get_or_404(id)
-        db.session.delete(workout)
-        db.session.commit()
-        return jsonify({"message": "Workout deleted"})
-
-
-    # EXERCISES 
-    @app.route("/api/exercises", methods=["GET"])
+        return jsonify({"message": "Goal deleted"}), 204
+    
+    # Exercises Endpoints
+    @app.route("/exercises", methods=["GET"])
     def get_exercises():
-        return jsonify([e.to_dict() for e in Exercise.query.all()])
+        exercises = Exercise.query.all()
+        return jsonify([
+            {"id": e.id, "name": e.exercise_name, "goal_id": e.goal_id} for e in exercises
+        ])
 
-    @app.route("/api/exercises/<int:id>", methods=["GET"])
-    def get_exercise(id):
-        return jsonify(Exercise.query.get_or_404(id).to_dict())
-
-    @app.route("/api/exercises", methods=["POST"])
+    @app.route("/exercises", methods=["POST"])
     def create_exercise():
-        data = request.json
-        exercise = Exercise(
-            exercise_name=data["exercise_name"],
-            goal_id=data.get("goal_id")
-        )
-        db.session.add(exercise)
+        data = request.get_json()
+        new_exercise = Exercise(exercise_name=data["exercise_name"], goal_id=data["goal_id"])
+        db.session.add(new_exercise)
         db.session.commit()
-        return jsonify(exercise.to_dict()), 201
-
-    @app.route("/api/exercises/<int:id>", methods=["PUT"])
+        return jsonify(new_exercise.to_dict()), 201
+    
+    @app.route("/exercises/<int:id>", methods=["PATCH"])
     def update_exercise(id):
         exercise = Exercise.query.get_or_404(id)
-        data = request.json
-        exercise.exercise_name = data.get("exercise_name", exercise.exercise_name)
+        data = request.get_json()
+        exercise.name = data.get("name", exercise.exercise_name)
         exercise.goal_id = data.get("goal_id", exercise.goal_id)
         db.session.commit()
-        return jsonify(exercise.to_dict())
+        return jsonify(exercise.to_dict()), 200
 
-    @app.route("/api/exercises/<int:id>", methods=["DELETE"])
+    @app.route("/exercises/<int:id>", methods=["DELETE"])
     def delete_exercise(id):
         exercise = Exercise.query.get_or_404(id)
         db.session.delete(exercise)
         db.session.commit()
-        return jsonify({"message": "Exercise deleted"})
+        return jsonify({"message": "Exercise deleted"}), 204
     
+    # Workouts Endpoints
+    @app.route("/workouts", methods=["GET"])
+    def get_workouts():
+        workouts = Workout.query.all()
+        return jsonify([
+            {"id": w.id, "title": w.title, "date": w.date, "user_id": w.user_id} for w in workouts
+        ])
 
-    #  EXERCISE LOGS
-    @app.route("/api/exercise_logs", methods=["GET"])
-    def get_exercise_logs():
-        return jsonify([log.to_dict() for log in ExerciseLog.query.all()])
+    @app.route("/workouts", methods=["POST"])
+    def create_workout():
+        data = request.get_json()
+        new_workout = Workout(title=data["title"], date=data["date"], user_id=data["user_id"])
+        db.session.add(new_workout)
+        db.session.commit()
+        return jsonify(new_workout.to_dict()), 201
+    
+    @app.route("/workouts/<int:id>", methods=["PATCH"])
+    def update_workout(id):
+        workout = Workout.query.get_or_404(id)
+        data = request.get_json()
+        workout.title = data.get("title", workout.title)
+        workout.date = data.get("date", workout.date)
+        workout.user_id = data.get("user_id", workout.user_id)
+        db.session.commit()
+        return jsonify(workout.to_dict()), 200
 
-    @app.route("/api/exercise_logs/<int:id>", methods=["GET"])
-    def get_exercise_log(id):
-        return jsonify(ExerciseLog.query.get_or_404(id).to_dict())
+    @app.route("/workouts/<int:id>", methods=["DELETE"])
+    def delete_workout(id):
+        workout = Workout.query.get_or_404(id)
+        db.session.delete(workout)
+        db.session.commit()
+        return jsonify({"message": "Workout deleted"}), 204
+    
+    # Exercise Logs Endpoints
+    @app.route("/exercise_logs", methods=["GET"])
+    def get_logs():
+        logs = ExerciseLog.query.all()
+        return jsonify([
+            {
+                "id": log.id,
+                "sets": log.sets,
+                "reps": log.reps,
+                "weight": log.weight,
+                "workout_id": log.workout_id,
+                "exercise_id": log.exercise_id
+            } for log in logs
+        ])
 
-    @app.route("/api/exercise_logs", methods=["POST"])
-    def create_exercise_log():
-        data = request.json
-        log = ExerciseLog(
+    @app.route("/exercise_logs", methods=["POST"])
+    def create_log():
+        data = request.get_json()
+        new_log = ExerciseLog(
             sets=data["sets"],
             reps=data["reps"],
-            weight=data.get("weight"),
+            weight=data.get("weight", 0),
             workout_id=data["workout_id"],
             exercise_id=data["exercise_id"]
         )
-        db.session.add(log)
+        db.session.add(new_log)
         db.session.commit()
-        return jsonify(log.to_dict()), 201
-
-    @app.route("/api/exercise_logs/<int:id>", methods=["PUT"])
-    def update_exercise_log(id):
+        return jsonify(new_log.to_dict()), 201
+    
+    @app.route("/exercise_logs/<int:id>", methods=["PATCH"])
+    def update_log(id):
         log = ExerciseLog.query.get_or_404(id)
-        data = request.json
+        data = request.get_json()
         log.sets = data.get("sets", log.sets)
         log.reps = data.get("reps", log.reps)
         log.weight = data.get("weight", log.weight)
         log.workout_id = data.get("workout_id", log.workout_id)
         log.exercise_id = data.get("exercise_id", log.exercise_id)
         db.session.commit()
-        return jsonify(log.to_dict())
+        return jsonify(log.to_dict()), 200
 
-    @app.route("/api/exercise_logs/<int:id>", methods=["DELETE"])
-    def delete_exercise_log(id):
+    @app.route("/exercise_logs/<int:id>", methods=["DELETE"])
+    def delete_log(id):
         log = ExerciseLog.query.get_or_404(id)
         db.session.delete(log)
         db.session.commit()
-        return jsonify({"message": "ExerciseLog deleted"})
-    
+        return jsonify({"message": "Exercise log deleted"}), 204
 
+        # Authentication Endpoints
+    @app.route("/auth/register", methods=["POST"])
+    def auth_register():
+        """
+        Expects JSON: { name, email, password, goal_id (optional) }
+        Creates user with hashed password. Returns created user (no password).
+        """
+        data = request.get_json() or {}
+        name = data.get("name")
+        email = data.get("email")
+        password = data.get("password")
+        goal_id = data.get("goal_id")
+
+        if not name or not email or not password:
+            return jsonify({"error": "name, email and password are required"}), 400
+
+        if User.query.filter_by(email=email).first():
+            return jsonify({"error": "email already registered"}), 409
+
+        user = User(name=name, email=email)
+        user.set_password(password)
+
+        if goal_id:
+            goal = Goal.query.get(goal_id)
+            if goal:
+                user.goals.append(goal)
+
+
+    # Login authentication
+    @app.route("/auth/login", methods=["POST"])
+    def auth_login():
+        """
+        Expects JSON: { email, password }
+        Returns: { access_token, user }
+        """
+        data = request.get_json() or {}
+        email = data.get("email")
+        password = data.get("password")
+
+        if not email or not password:
+            return jsonify({"error": "email and password are required"}), 400
+
+        user = User.query.filter_by(email=email).first()
+        if not user or not user.check_password(password):
+            return jsonify({"error": "invalid credentials"}), 401
+
+        access_token = create_access_token(identity=user.id)
+        return jsonify({"access_token": access_token, "user": user.to_dict()}), 200
+
+
+    # shows current user info
+    @app.route("/users/me", methods=["GET"])
+    @jwt_required()
+    def users_me():
+        current_user_id = get_jwt_identity()
+        user = User.query.get_or_404(current_user_id)
+        return jsonify(user.to_dict()), 200
     return app
 
 
 app = create_app()
 
+
 if __name__ == "__main__":
     app.run(debug=True)
-
-
